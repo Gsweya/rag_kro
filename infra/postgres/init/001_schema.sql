@@ -18,6 +18,19 @@ INSERT INTO tenants (id, name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'default')
 ON CONFLICT DO NOTHING;
 
+-- ---- per-tenant API keys (auth boundary while login is absent) -------------
+-- Callers must present a valid (tenant_id, api_key) pair via headers:
+--   X-Tenant-Id, X-Tenant-Key
+-- The pair is validated against this table before ANY route trusts a tenant_id.
+CREATE TABLE IF NOT EXISTS tenant_keys (
+    tenant_id  UUID PRIMARY KEY REFERENCES tenants(id),
+    api_key    TEXT NOT NULL,
+    label      TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- seeded by the api service at startup from TENANT_DEFAULT_KEY (see auth.py)
+
 -- ---- platform sessions (wa / ig) --------------------------------------
 CREATE TABLE IF NOT EXISTS wa_sessions (
     tenant_id    UUID NOT NULL REFERENCES tenants(id),

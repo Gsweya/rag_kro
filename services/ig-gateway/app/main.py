@@ -125,6 +125,8 @@ def send(
 async def _poller():
     """Background task: poll new DMs per connected tenant and forward as webhook."""
     cb = settings.ig_api_callback_url
+    default_tenant_id = get_settings().default_tenant_id
+    default_tenant_key = get_settings().tenant_default_key
     while True:
         for tenant_id, cl in list(_clients.items()):
             try:
@@ -140,7 +142,11 @@ async def _poller():
                                     "contact_identifier": t.thread_title or str(m.user_id),
                                     "body": m.text,
                                 },
-                                headers={"X-Internal-Key": settings.internal_api_key},
+                                headers={
+                                    "X-Internal-Key": settings.internal_api_key,
+                                    "X-Tenant-Id": default_tenant_id,
+                                    "X-Tenant-Key": default_tenant_key,
+                                },
                                 timeout=30,
                             )
             except Exception:

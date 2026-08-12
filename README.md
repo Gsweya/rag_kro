@@ -145,6 +145,8 @@ or `hf` (HF `all-MiniLM-L6-v2`).
 | Product DB sync (hash change detection) | ✅ |
 | Contact-profile summarization (worker) | ✅ |
 | Reminders + SMS/email/webhook notifications | ✅ |
+| **Tenant isolation: per-tenant API keys** (X-Tenant-Id/Key, body mismatch rejected) | ✅ |
+| **Tenant isolation: Postgres RLS + per-tenant Qdrant collections** (opt-in) | ✅ |
 | WhatsApp Gateway (Baileys QR connect + webhook) | ✅ |
 | Instagram Gateway (instagrapi) | ✅ (prototype risk) |
 | Next.js dashboard | ✅ |

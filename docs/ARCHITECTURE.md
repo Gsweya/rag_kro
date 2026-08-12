@@ -105,6 +105,22 @@ A tenant turning on a new instance inherits the same knowledge instantly — not
 - Anything cleverer (name/phone overlap matching) is left to a manual "link contact"
   action in the dashboard to avoid leaking one contact's context into another's thread.
 
+## 5b. Tenant isolation (defense in depth)
+
+Layered so Company A's context can never surface in Company B's conversations:
+
+1. **Payload filter (always).** Every Qdrant query filters `tenant_id`; every vector
+   carries it. Retrieval is tenant-scoped by construction.
+2. **Per-tenant API keys (on).** `X-Tenant-Id` + `X-Tenant-Key` enforced on every
+   tenant-scoped `api` route; body `tenant_id` must match the authenticated header
+   (`rag_kro_shared/tenant_auth.py`).
+3. **Postgres RLS (opt-in).** `infra/postgres/rls/002_rls.sql` + `session_scope(tenant_id=)`
+   make the DB itself refuse cross-tenant rows.
+4. **Qdrant per-tenant collections (opt-in).** `QDRANT_PER_TENANT_COLLECTIONS=true` for
+   physical vector-space separation.
+
+Turn on 3+4 together when the second real tenant goes live (see `docs/SECURITY.md` §1b).
+
 ## 6. Async jobs (Celery/beat)
 
 | Beat schedule | Task | Purpose |

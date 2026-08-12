@@ -16,6 +16,7 @@ export function statusFor(tenantId) {
 export function forwardToApi(tenantId, body, mediaUrl = null) {
   const cbUrl = process.env.WA_API_CALLBACK_URL || 'http://localhost:8000/webhook/message';
   const internalKey = process.env.WA_GATEWAY_INTERNAL_KEY || process.env.INTERNAL_API_KEY || 'internal-key';
+  const tenantKey = process.env.WA_GATEWAY_TENANT_KEY || process.env.TENANT_DEFAULT_KEY || 'admin';
   const payload = {
     tenant_id: tenantId,
     platform: 'whatsapp',
@@ -26,10 +27,15 @@ export function forwardToApi(tenantId, body, mediaUrl = null) {
       || null,
     media_url: mediaUrl,
   };
-  // fire-and-forget; API service is the orchestrator
+  // fire-and-forget; API service is the orchestrator. Tenant auth via headers.
   fetch(cbUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalKey },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Internal-Key': internalKey,
+      'X-Tenant-Id': process.env.WA_GATEWAY_TENANT_ID || process.env.TENANT_DEFAULT_ID || '00000000-0000-0000-0000-000000000001',
+      'X-Tenant-Key': tenantKey,
+    },
     body: JSON.stringify(payload),
   }).catch((err) => {
     console.error('[wa-gateway] webhook forward failed:', err.message);

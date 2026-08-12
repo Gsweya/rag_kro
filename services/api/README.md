@@ -15,6 +15,13 @@ calls the RAG service, sends replies, and records everything (spec sections 4–
 - Call `rag` `POST /chat` and forward the reply through the originating gateway.
 - Log message pairs, activity events, orders, reminders (delegated to the worker).
 
+## Tenant isolation (no-auth mode)
+
+Every route below requires an `X-Tenant-Id` + `X-Tenant-Key` header pair validated
+against the `tenant_keys` table (`rag_kro_shared/tenant_auth.py`). The header tenant is
+authoritative; a body `tenant_id` that differs is rejected (403). The default tenant
+key is seeded at startup (`TENANT_DEFAULT_KEY`). Deep-dive: `docs/SECURITY.md` §1b.
+
 ## Endpoints
 
 All under `:8000` (internal only). Key ones:

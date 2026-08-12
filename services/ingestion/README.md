@@ -18,6 +18,10 @@ product row        ──► text-doc ─► embed ──► Qdrant (payload: te
 - The Celery worker (`services/worker`) schedules periodic reconciliation on top of the
   same endpoints (`sync_products`, `sync_documents`, hash-based change detection).
 
+> **Reachability.** `ingestion` is internal-only. The browser uploads to `api`
+> (`POST /documents/upload`, tenant-header authenticated) which proxies the file here
+> with the shared `INTERNAL_API_KEY` — the tenant boundary is never bypassed from the UI.
+
 ## Endpoints
 
 | Method | Path | Purpose |

@@ -33,6 +33,17 @@ class Tenant(Base):
     )
 
 
+class TenantKey(Base):
+    __tablename__ = "tenant_keys"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    api_key: Mapped[str] = mapped_column(String, nullable=False)
+    label: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class WaSession(Base):
     __tablename__ = "wa_sessions"
 

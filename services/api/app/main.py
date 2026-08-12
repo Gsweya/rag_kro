@@ -2,11 +2,16 @@
 
 Responsibilities:
   - ingest gateway webhooks (wa/ig)
-  - enforce allowlist (section 4.2)
-  - respect pause/resume (section 4.3 / 5)
+  - enforce allowlist (section 4.2) and pause/resume (section 4.3 / 5)
   - identity resolution + combined cross-platform history (section 4.4)
   - build RAG context, call rag service, forward reply back to the gateway
   - log messages + activity, trigger order/reminder/escalation notifications
+
+Tenant isolation (no-auth mode):
+  EVERY tenant-scoped route requires a valid (X-Tenant-Id, X-Tenant-Key) pair from
+  the `tenant_keys` table. The authenticated header tenant is authoritative; any
+  tenant_id inside a request body that differs is rejected (403). Callers can
+  never read or write another tenant's data by editing the body.
 """
 import os
 import sys
@@ -15,13 +20,15 @@ import uuid
 sys.path.insert(0, "/app")
 sys.path.insert(0, "/app/src")
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from rag_kro_shared import (
     get_settings,
     session_scope,
+    require_tenant,
+    ensure_matching_tenant,
 )
 from rag_kro_shared.models import (
     ActivityLog,
@@ -47,9 +54,28 @@ app = FastAPI(title="rag_kro api", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+@app.on_event("startup")
+def _seed_default_tenant_key() -> None:
+    """Ensure the default tenant has a key (from TENANT_DEFAULT_KEY)."""
+    from rag_kro_shared.models import TenantKey
+
+    with session_scope() as s:
+        existing = s.get(TenantKey, uuid.UUID(settings.default_tenant_id))
+        if existing is None:
+            s.add(
+                TenantKey(
+                    tenant_id=uuid.UUID(settings.default_tenant_id),
+                    api_key=settings.tenant_default_key,
+                    label="default (no-auth mode)",
+                )
+            )
+        elif settings.env != "development":
+            existing.api_key = settings.tenant_default_key
+
+
 # ---- schemas --------------------------------------------------------------
 class WebhookMessage(BaseModel):
-    tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    tenant_id: str | None = None  # present only as a cross-check; header is authoritative
     platform: str  # whatsapp | instagram
     contact_identifier: str
     body: str | None = None
@@ -61,14 +87,14 @@ class ConversationPatch(BaseModel):
 
 
 class SenderCreate(BaseModel):
-    tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    tenant_id: str | None = None
     platform: str
     identifier: str
     label: str | None = None
 
 
 class ProductCreate(BaseModel):
-    tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    tenant_id: str | None = None
     name: str
     price: float | None = None
     stock: int = 0
@@ -76,7 +102,7 @@ class ProductCreate(BaseModel):
 
 
 class ReminderCreate(BaseModel):
-    tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    tenant_id: str | None = None
     platform: str = "whatsapp"
     contact_identifier: str
     remind_at: str  # ISO timestamp
@@ -84,7 +110,7 @@ class ReminderCreate(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    tenant_id: str | None = None
     conversation_id: str
     body: str
 
@@ -106,9 +132,10 @@ def health():
 
 # ---- webhooks ---------------------------------------------------------------
 @app.post("/webhook/message")
-def webhook_message(req: WebhookMessage):
-    """Step 1: gateway posts inbound message here."""
-    tenant_id = req.tenant_id
+def webhook_message(req: WebhookMessage, tenant_id: str = Depends(require_tenant)):
+    """Step 1: gateway posts inbound message here (authenticated by tenant headers)."""
+    ensure_matching_tenant(req.tenant_id, tenant_id)
+    tenant_id = tenant_id  # authoritative tenant
 
     # step 2: allowlist
     with session_scope() as s:
@@ -206,7 +233,7 @@ def webhook_message(req: WebhookMessage):
 
 # ---- conversations (pause/resume, section 5) ---------------------------------
 @app.get("/conversations")
-def list_conversations(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_conversations(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         rows = (
             s.query(Conversation)
@@ -227,9 +254,13 @@ def list_conversations(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
 
 
 @app.patch("/conversations/{conversation_id}")
-def patch_conversation(conversation_id: str, patch: ConversationPatch):
+def patch_conversation(conversation_id: str, patch: ConversationPatch, tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
-        conv = s.get(Conversation, uuid.UUID(conversation_id))
+        conv = (
+            s.query(Conversation)
+            .filter(Conversation.id == uuid.UUID(conversation_id), Conversation.tenant_id == tenant_id)
+            .first()
+        )
         if conv is None:
             raise HTTPException(404, "conversation not found")
         conv.status = patch.status
@@ -239,7 +270,7 @@ def patch_conversation(conversation_id: str, patch: ConversationPatch):
 
 # ---- allowed senders -----------------------------------------------------------
 @app.get("/senders")
-def list_senders(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_senders(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         rows = s.query(AllowedSender).filter_by(tenant_id=tenant_id).all()
         return [
@@ -249,10 +280,11 @@ def list_senders(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
 
 
 @app.post("/senders")
-def create_sender(sender: SenderCreate):
+def create_sender(sender: SenderCreate, tenant_id: str = Depends(require_tenant)):
+    ensure_matching_tenant(sender.tenant_id, tenant_id)
     with session_scope() as s:
         a = AllowedSender(
-            tenant_id=sender.tenant_id,
+            tenant_id=tenant_id,
             platform=sender.platform,
             identifier=sender.identifier,
             label=sender.label,
@@ -263,9 +295,13 @@ def create_sender(sender: SenderCreate):
 
 
 @app.delete("/senders/{sender_id}")
-def delete_sender(sender_id: str):
+def delete_sender(sender_id: str, tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
-        a = s.get(AllowedSender, uuid.UUID(sender_id))
+        a = (
+            s.query(AllowedSender)
+            .filter(AllowedSender.id == uuid.UUID(sender_id), AllowedSender.tenant_id == tenant_id)
+            .first()
+        )
         if a is None:
             raise HTTPException(404, "sender not found")
         s.delete(a)
@@ -275,7 +311,7 @@ def delete_sender(sender_id: str):
 
 # ---- products ------------------------------------------------------------
 @app.get("/products")
-def list_products(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_products(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         rows = (
             s.query(Product)
@@ -296,21 +332,23 @@ def list_products(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
 
 
 @app.post("/products")
-def create_product(p: ProductCreate):
+def create_product(p: ProductCreate, tenant_id: str = Depends(require_tenant)):
+    ensure_matching_tenant(p.tenant_id, tenant_id)
     with session_scope() as s:
         prod = Product(
-            tenant_id=p.tenant_id, name=p.name, price=p.price, stock=p.stock, description=p.description
+            tenant_id=tenant_id, name=p.name, price=p.price, stock=p.stock, description=p.description
         )
         s.add(prod)
         s.commit()
         prod_id = prod.id
 
-    # push a re-embed job (6b product sync) to the ingestion service
+    # push a re-embed job (6b product sync) to the ingestion service (internal key,
+    # but scoped to the authenticated tenant)
     import httpx
 
     httpx.post(
         f"{settings.ingestion_api_url}/ingest/product",
-        data={"product_id": str(prod_id), "tenant_id": p.tenant_id},
+        data={"product_id": str(prod_id), "tenant_id": tenant_id},
         headers={"X-Internal-Key": settings.ingest_api_key},
         timeout=120,
     )
@@ -318,8 +356,37 @@ def create_product(p: ProductCreate):
 
 
 # ---- documents (upload -> ingestion service) -----------------------------
+@app.post("/documents/upload")
+async def upload_document(
+    request: Request,
+    tenant_id: str = Depends(require_tenant),
+):
+    """Proxy: accept a multipart file with tenant headers, forward to ingestion.
+
+    The browser only talks to the api service; ingestion is reached via the
+    internal network with the shared internal key. The authenticated tenant is
+    passed through untouched.
+    """
+    import httpx
+
+    form = await request.form()
+    uploaded = form["file"]
+    doc_type = form.get("doc_type", "pdf")
+    raw = await uploaded.read()
+
+    resp = httpx.post(
+        f"{settings.ingestion_api_url}/ingest/document",
+        data={"tenant_id": tenant_id, "doc_type": doc_type},
+        files={"file": (uploaded.filename, raw, uploaded.content_type)},
+        headers={"X-Internal-Key": settings.ingest_api_key},
+        timeout=300,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 @app.get("/documents")
-def list_documents(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_documents(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         rows = s.query(Document).filter_by(tenant_id=tenant_id).order_by(Document.created_at.desc()).all()
         return [
@@ -336,7 +403,7 @@ def list_documents(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
 
 # ---- orders/reminders/notification targets -------------------------------
 @app.get("/orders")
-def list_orders(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_orders(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         rows = s.query(Order).filter_by(tenant_id=tenant_id).order_by(Order.created_at.desc()).all()
         return [
@@ -352,13 +419,14 @@ def list_orders(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
 
 
 @app.post("/reminders")
-def create_reminder(r: ReminderCreate):
+def create_reminder(r: ReminderCreate, tenant_id: str = Depends(require_tenant)):
+    ensure_matching_tenant(r.tenant_id, tenant_id)
     from datetime import datetime
 
     remind_at = datetime.fromisoformat(r.remind_at)
     with session_scope() as s:
         rem = Reminder(
-            tenant_id=r.tenant_id,
+            tenant_id=tenant_id,
             platform=r.platform,
             contact_identifier=r.contact_identifier,
             remind_at=remind_at,
@@ -371,7 +439,7 @@ def create_reminder(r: ReminderCreate):
 
 
 @app.get("/notifications")
-def list_notifications(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_notifications(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         rows = s.query(NotificationTarget).filter_by(tenant_id=tenant_id).all()
         return [{"id": str(n.id), "type": n.type, "destination": n.destination} for n in rows]
@@ -379,7 +447,7 @@ def list_notifications(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
 
 # ---- activity log ----------------------------------------------------------
 @app.get("/activity")
-def list_activity(tenant_id: str = "00000000-0000-0000-0000-000000000001", limit: int = 50):
+def list_activity(tenant_id: str = Depends(require_tenant), limit: int = 50):
     with session_scope() as s:
         rows = (
             s.query(ActivityLog)
@@ -396,7 +464,7 @@ def list_activity(tenant_id: str = "00000000-0000-0000-0000-000000000001", limit
 
 # ---- sessions (connect status for dashboard) ------------------------------
 @app.get("/sessions")
-def list_sessions(tenant_id: str = "00000000-0000-0000-0000-000000000001"):
+def list_sessions(tenant_id: str = Depends(require_tenant)):
     with session_scope() as s:
         wa = s.query(WaSession).filter_by(tenant_id=tenant_id).first()
         ig = s.query(IgSession).filter_by(tenant_id=tenant_id).first()

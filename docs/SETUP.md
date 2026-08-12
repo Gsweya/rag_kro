@@ -23,6 +23,7 @@ Edit `.env` and at minimum set:
 | `FERENCE_SECRET_KEY` | Fernet key for DB session-credential encryption |
 | `ADMIN_TOKEN` | static token guarding the dashboard (no-auth mode) |
 | `INTERNAL_API_KEY` | shared secret for internal service calls |
+| `TENANT_DEFAULT_KEY` | seeded into `tenant_keys`; every API call must send it as `X-Tenant-Key` (with `X-Tenant-Id`) |
 | `HF_TOKEN` | optional, unlocks HF free-tier model availability |
 | `SMTP_USER`/`SMTP_PASSWORD` | optional order/escalation emails |
 

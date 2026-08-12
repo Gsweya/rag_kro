@@ -16,17 +16,19 @@ export default function DocumentsPage() {
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("tenant_id", "00000000-0000-0000-0000-000000000001");
     fd.append("doc_type", docType);
-    const created = await fetch("/api/ingest/ingest/document", {
+    fd.append("tenant_id", "00000000-0000-0000-0000-000000000001");
+    const res = await fetch("/api/back/documents/upload", {
       method: "POST",
-      headers: { "x-internal-key": process.env.NEXT_PUBLIC_INTERNAL_KEY || "internal-key" },
+      headers: {
+        "x-tenant-id": "00000000-0000-0000-0000-000000000001",
+        "x-tenant-key": process.env.NEXT_PUBLIC_TENANT_KEY || "admin",
+      },
       body: fd,
-    }).then((r) => r.json());
-    setDocs((d) => [
-      { id: created.doc_id, type: docType, title: file.name, status: created.status },
-      ...d,
-    ]);
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "upload failed");
+    setDocs((d) => [{ id: data.doc_id, type: docType, title: file.name, status: data.status }, ...d]);
     setFile(null);
   }
 

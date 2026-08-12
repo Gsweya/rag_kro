@@ -10,6 +10,7 @@ from .embeddings import get_embedder
 from .llm import LLMClient, get_llm_client
 from .vectors import VectorStore
 from .internal import internal_client
+from .tenant_auth import require_tenant, ensure_matching_tenant
 
 __all__ = [
     "Settings",
@@ -24,4 +25,6 @@ __all__ = [
     "get_llm_client",
     "VectorStore",
     "internal_client",
+    "require_tenant",
+    "ensure_matching_tenant",
 ]

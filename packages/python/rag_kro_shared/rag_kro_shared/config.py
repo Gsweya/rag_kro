@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # qdrant
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "rag_kro_vectors"
+    # true = one collection per tenant (hard Qdrant-level isolation).
+    #       collection names become "{qdrant_collection}__{tenant_id}".
+    #       NOTE: creation is lazy (first upsert). Safe to flip on when the
+    #       second real tenant goes live.
+    qdrant_per_tenant_collections: bool = False
     vector_size: int = 384
     vector_metric: str = "cosine"
 
@@ -71,6 +76,11 @@ class Settings(BaseSettings):
     # api
     api_port: int = 8000
     api_api_key: str = "internal-key"
+
+    # tenant auth boundary (steers TENANT_KEY event when a second tenant appears)
+    default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    tenant_default_key: str = "admin"  # seeded into tenant_keys at api startup
+    require_tenant_key: bool = True    # reject calls without a valid tenant key
 
     # gateways
     ig_api_callback_url: str = "http://api:8000/webhook/message"

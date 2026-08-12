@@ -1,6 +1,11 @@
 "use client";
 
 const ADMIN_TOKEN = (typeof process !== "undefined" && process.env.NEXT_PUBLIC_ADMIN_TOKEN) || "";
+const TENANT_ID =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_TENANT_ID) ||
+  "00000000-0000-0000-0000-000000000001";
+const TENANT_KEY =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_TENANT_KEY) || "admin";
 
 export async function api<T = any>(
   path: string,
@@ -9,6 +14,8 @@ export async function api<T = any>(
   const { file, body, headers, ...rest } = options;
   const headers_ = new Headers(headers);
   if (ADMIN_TOKEN) headers_.set("x-admin-token", ADMIN_TOKEN);
+  headers_.set("x-tenant-id", TENANT_ID);
+  headers_.set("x-tenant-key", TENANT_KEY);
 
   let body_ = body;
   if (file) {

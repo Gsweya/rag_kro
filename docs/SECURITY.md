@@ -16,6 +16,33 @@ Recommended minimum before any public exposure:
 2. Reverse proxy basic-auth as belt and braces.
 3. Do not publish internal service ports.
 
+## 1b. Tenant isolation (multi-tenancy with no real login)
+
+The retrieval pipeline is tenant-scoped **by design**: every Qdrant query filters
+`tenant_id` (vectors.py), every vector payload carries `tenant_id` (ingestion), and every
+Postgres read is `.filter_by(tenant_id=...)`. Company B's products cannot match company
+A's RAG search. But isolation-by-convention is not enough once a second real tenant
+exists — so `rag_kro` layers real enforcement:
+
+1. **Per-tenant API keys (on by default).** Every tenant-scoped route requires an
+   `X-Tenant-Id` + `X-Tenant-Key` pair, checked against the `tenant_keys` table
+   (`rag_kro_shared/tenant_auth.py`). The authenticated header tenant is authoritative;
+   a `tenant_id` inside a request body that differs is rejected with 403
+   (`ensure_matching_tenant`). A caller can no longer read or write another tenant's data
+   by editing the body. The default tenant key (`TENANT_DEFAULT_KEY`) is seeded into
+   `tenant_keys` at API startup.
+2. **Postgres RLS (opt-in, for the 2nd tenant).** `infra/postgres/rls/002_rls.sql`
+   enables row-level security keyed on `current_setting('app.tenant_id')`. The shared
+   `session_scope(tenant_id=...)` helper sets it per transaction, so the **database**
+   enforces isolation even if an app query later forgets its WHERE clause.
+3. **Qdrant per-tenant collections (opt-in).** Set `QDRANT_PER_TENANT_COLLECTIONS=true`
+   and each tenant gets its own collection (`rag_kro_vectors__{tenant_id}`) — Qdrant-level
+   isolation on top of the payload filter. Flip both on together when the second real
+   tenant goes live.
+
+Browser uploads go through `api` (`POST /documents/upload` with tenant headers), never
+straight to the ingestion service, so the tenant boundary isn't bypassable from the UI.
+
 ## 2. Session credential encryption at rest
 
 WA/IG session blobs stored in `wa_sessions` / `ig_sessions` are encrypted with Fernet
