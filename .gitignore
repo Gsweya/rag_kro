@@ -1,0 +1,47 @@
+# envy
+.env
+.env.local
+.env.*.local
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+
+# node
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+npm-debug.log*
+
+# next.js
+.turbo/
+
+# docker
+.postgres/
+.redis/
+.qdrant/
+.minio/
+.ollama/
+dbdata/
+
+# misc
+.DS_Store
+*.log
+coverage/
+.idea/
+.vscode/
+
+# gateway session artifacts (never commit session creds)
+wa-sessions/
+ig-sessions/
+*banned*.json

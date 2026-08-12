@@ -1,0 +1,241 @@
+# =====================================================================
+# rag_kro — orchestration (docker compose)
+#
+#   core infra (always on)   : postgres, redis, qdrant, minio
+#   services (profile=dev)   : web, api, rag, ingestion, worker
+#   gateway (profile=wa)     : wa-gateway
+#   gateway (profile=ig)     : ig-gateway
+#   LLM     (profile=ollama) : ollama (optional self-hosted LLM)
+#
+#   Quick start:
+#     cp .env.example .env
+#     docker compose --profile dev --profile wa up -d --build    # everything except IG/Ollama
+#     docker compose --profile dev                              # API/frontend/core
+#   See docs/DEPLOYMENT.md
+# =====================================================================
+
+name: rag_kro
+
+services:
+  # ------------------------------------------------------------------
+  # core infra
+  # ------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag_kro_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag_kro}
+      POSTGRES_USER: ${POSTGRES_USER:-rag_kro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rag_kro} -d ${POSTGRES_DB:-rag_kro}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag_kro_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: rag_kro_qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: rag_kro_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-rag_kro_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------
+  # rag_kro services
+  # ------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: rag_kro_api
+    restart: unless-stopped
+    profiles: ["dev"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag_kro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rag_kro}
+      RAG_API_URL: http://rag:8002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rag:
+        condition: service_started
+    volumes:
+      - ./services/api:/app
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    container_name: rag_kro_ingestion
+    restart: unless-stopped
+    profiles: ["dev"]
+    env_file: .env
+    depends_on:
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/ingestion:/app
+    ports:
+      - "8001:8001"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+  rag:
+    build:
+      context: .
+      dockerfile: services/rag/Dockerfile
+    container_name: rag_kro_rag
+    restart: unless-stopped
+    profiles: ["dev"]
+    env_file: .env
+    depends_on:
+      qdrant:
+        condition: service_started
+    volumes:
+      - ./services/rag:/app
+    ports:
+      - "8002:8002"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    container_name: rag_kro_worker
+    restart: unless-stopped
+    profiles: ["dev"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ingestion:
+        condition: service_started
+    volumes:
+      - ./services/worker:/app
+    command: celery -A app.celery_app.app worker -B -l info -Q default
+
+  web:
+    build:
+      context: .
+      dockerfile: services/web/Dockerfile
+    container_name: rag_kro_web
+    restart: unless-stopped
+    profiles: ["dev"]
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./services/web:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    command: npm run dev
+
+  # ------------------------------------------------------------------
+  # gateways
+  # ------------------------------------------------------------------
+  wa-gateway:
+    build:
+      context: .
+      dockerfile: services/wa-gateway/Dockerfile
+    container_name: rag_kro_wa_gateway
+    restart: unless-stopped
+    profiles: ["wa"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    ports:
+      - "8100:8100"
+
+  ig-gateway:
+    build:
+      context: .
+      dockerfile: services/ig-gateway/Dockerfile
+    container_name: rag_kro_ig_gateway
+    restart: unless-stopped
+    profiles: ["ig"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    ports:
+      - "8200:8200"
+
+  # ------------------------------------------------------------------
+  # optional local LLM (truly $0, keep data private)
+  # ------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag_kro_ollama
+    restart: unless-stopped
+    profiles: ["ollama"]
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  postgres-data:
+  redis-data:
+  qdrant-data:
+  minio-data:
+  ollama-data:
