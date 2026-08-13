@@ -1,4 +1,4 @@
-.PHONY: up up-dev up-wa up-ig down logs ps schema qr key build test
+.PHONY: up up-dev up-wa up-ig down logs ps schema qr key build test verify
 
 # ---- environment ---------------------------------------------------
 .env:
@@ -40,5 +40,17 @@ build:
 	docker compose build
 
 test:
-	@python3 -m pytest --version >/dev/null 2>&1 || echo "pytest not installed locally — tests run in service images"
-	@echo "-> run individual service tests inside their containers or CI"
+	@python3 -m pytest --version >/dev/null 2>&1 || echo "pytest not installed locally — run inside a service image"
+	@echo "-> tenant isolation tests (needs Postgres + a seeded tenant key):"
+	python3 -m pytest tests/test_isolation.py -v
+
+verify:
+	@echo "== syntax: python =="
+	python3 -m compileall -q packages services/api services/rag services/ingestion services/worker services/ig-gateway
+	@echo "== syntax: node =="
+	node --check services/wa-gateway/src/index.js
+	node --check services/wa-gateway/src/socket.js
+	node --check services/wa-gateway/src/send.js
+	@echo "== compose config =="
+	docker compose config --quiet
+	@echo "OK"
