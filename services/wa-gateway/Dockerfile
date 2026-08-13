@@ -1,4 +1,5 @@
 FROM node:20-alpine AS deps
+RUN apk add --no-cache git
 WORKDIR /app
 COPY services/wa-gateway/package.json ./
 RUN npm install
