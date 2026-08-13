@@ -77,7 +77,11 @@ Your instance picks up knowledge instantly because retrieval is shared, not dupl
 ```bash
 cp .env.example .env        # set POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, a Fernet key…
 make key                    # generate FERENCE_SECRET_KEY, paste into .env
-make up                     # full stack: core + API + ingestion + RAG + worker + WA gateway (no IG)
+
+./run.sh                    # power everything up (builds images, starts stack)
+                            # then opens a terminal tab per service tailing its logs
+# alternatives:
+make up                     # full stack, logs via: make logs / make ps / make down
 ```
 
 | Service | URL |

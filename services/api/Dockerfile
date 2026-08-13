@@ -3,10 +3,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY packages/python/rag_kro_shared /packages/python/rag_kro_shared
-RUN pip install --no-cache-dir --default-timeout=120 -e /packages/python/rag_kro_shared
+RUN pip install --no-cache-dir --retries 10 --default-timeout=120 -e /packages/python/rag_kro_shared
 
 COPY services/api/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --default-timeout=120 -r /app/requirements.txt
+RUN pip install --no-cache-dir --retries 10 --default-timeout=120 -r /app/requirements.txt
 
 COPY services/api/app /app/app
 ENV PYTHONPATH=/app:/packages/python/rag_kro_shared

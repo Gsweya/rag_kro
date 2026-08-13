@@ -8,10 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # shared package
 COPY packages/python/rag_kro_shared /packages/python/rag_kro_shared
-RUN pip install --no-cache-dir --default-timeout=120 -e /packages/python/rag_kro_shared
+RUN pip install --no-cache-dir --retries 10 --default-timeout=120 -e /packages/python/rag_kro_shared
 
 COPY services/ingestion/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --default-timeout=120 -r /app/requirements.txt
+RUN pip install --no-cache-dir --retries 10 --default-timeout=120 -r /app/requirements.txt
 
 COPY services/ingestion/app /app/app
 ENV PYTHONPATH=/app:/packages/python/rag_kro_shared
