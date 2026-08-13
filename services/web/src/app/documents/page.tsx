@@ -26,7 +26,7 @@ export default function DocumentsPage() {
       },
       body: fd,
     });
-    const data = await res.json();
+    const data: any = await res.json();
     if (!res.ok) throw new Error(data.detail || "upload failed");
     setDocs((d) => [{ id: data.doc_id, type: docType, title: file.name, status: data.status }, ...d]);
     setFile(null);

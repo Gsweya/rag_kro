@@ -9,7 +9,7 @@ const TENANT_KEY =
 
 export async function api<T = any>(
   path: string,
-  options: RequestInit & { file?: File } = {}
+  options: Omit<RequestInit, "body"> & { body?: unknown; file?: File } = {}
 ): Promise<T> {
   const { file, body, headers, ...rest } = options;
   const headers_ = new Headers(headers);
@@ -17,7 +17,7 @@ export async function api<T = any>(
   headers_.set("x-tenant-id", TENANT_ID);
   headers_.set("x-tenant-key", TENANT_KEY);
 
-  let body_ = body;
+  let body_: BodyInit | undefined;
   if (file) {
     const fd = new FormData();
     fd.append("file", file);

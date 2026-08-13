@@ -1,5 +1,6 @@
 # ---- deps ----
 FROM node:20-alpine AS deps
+RUN apk add --no-cache git
 WORKDIR /app
 COPY services/web/package.json services/web/package-lock.json* ./
 RUN npm install
