@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     hf_token: str = ""
 
     # llm
-    llm_backend: str = "hf"  # hf | ollama | openai_compatible
+    llm_backend: str = "openai_compatible"  # hf | ollama | openai_compatible
     hf_inference_model: str = "Qwen/Qwen2.5-7B-Instruct"
-    hf_api_url: str = "https://api-inference.huggingface.co"
+    hf_api_url: str = "https://router.huggingface.co"
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
     llm_temperature: float = 0.4

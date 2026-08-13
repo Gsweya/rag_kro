@@ -99,11 +99,12 @@ phone number → **Connect WhatsApp** → scan the QR → message from an allowe
 
 ## LLM backend (free tier)
 
-Default: **HuggingFace Inference API** (`LLM_BACKEND=hf`).
+Default: **HF Inference Providers** (`LLM_BACKEND=openai_compatible`) — the free
+OpenAI-compatible router at `https://router.huggingface.co/v1/chat/completions`.
 
 | Backend | Env config | Cost |
 |---|---|---|
-| HF Inference API | `LLM_BACKEND=hf`, `HF_INFERENCE_MODEL=Qwen/Qwen2.5-7B-Instruct` | $0, rate-limited |
+| HF Inference Providers | `LLM_BACKEND=openai_compatible`, `OPENAI_COMPATIBLE_MODEL=Qwen/Qwen2.5-7B-Instruct:fastest` | $0, rate-limited |
 | Ollama (self-hosted) | `LLM_BACKEND=ollama`, `OLLAMA_MODEL=llama3.2` + `make up-ollama` | $0, private |
 | Any openAI-compatible | `LLM_BACKEND=openai_compatible` + base URL + key | depends |
 
