@@ -41,6 +41,11 @@ open_tab() {
 }
 
 up() {
+    if [ -z "$(ls infra/docker/python-base/wheels/*.whl 2>/dev/null)" ]; then
+        echo "==> fetching heavy ML wheels (torch ~526MB, resumable) ..."
+        echo "    re-run this script any time; it continues where it left off."
+        bash infra/docker/python-base/fetch-wheels.sh
+    fi
     echo "==> building shared ML base image (torch, downloaded once) ..."
     $COMPOSE $PROFILES build python-base
     echo "==> building + starting all services (dev + wa) ..."
