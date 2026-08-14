@@ -41,6 +41,8 @@ open_tab() {
 }
 
 up() {
+    echo "==> building shared ML base image (torch, downloaded once) ..."
+    $COMPOSE $PROFILES build python-base
     echo "==> building + starting all services (dev + wa) ..."
     $COMPOSE $PROFILES up -d --build
     echo "==> waiting for api to be reachable ..."
