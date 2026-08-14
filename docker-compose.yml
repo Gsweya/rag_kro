@@ -86,6 +86,18 @@ services:
   # ------------------------------------------------------------------
   # rag_kro services
   # ------------------------------------------------------------------
+  # shared ML base: torch + sentence-transformers installed ONCE here;
+  # rag/ingestion/worker build FROM it so the ~1GB heavy download happens
+  # a single time and is cached across all three images.
+  python-base:
+    image: rag_kro-python-base:latest
+    build:
+      context: .
+      dockerfile: infra/docker/python-base/Dockerfile
+    profiles: ["dev"]
+    command: ["sleep", "infinity"]
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -119,6 +131,8 @@ services:
     profiles: ["dev"]
     env_file: .env
     depends_on:
+      python-base:
+        condition: service_started
       qdrant:
         condition: service_started
       minio:
@@ -140,6 +154,8 @@ services:
     profiles: ["dev"]
     env_file: .env
     depends_on:
+      python-base:
+        condition: service_started
       qdrant:
         condition: service_started
     volumes:
@@ -157,6 +173,8 @@ services:
     profiles: ["dev"]
     env_file: .env
     depends_on:
+      python-base:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
