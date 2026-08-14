@@ -8,7 +8,7 @@ from .crypto import Crypto
 from .db import Base, run_migrations, session_scope, get_engine
 from .embeddings import get_embedder
 from .llm import LLMClient, get_llm_client
-from .vectors import VectorStore
+from .vectors import VectorStore, get_vector_store
 from .internal import internal_client
 from .tenant_auth import require_tenant, ensure_matching_tenant
 
@@ -24,6 +24,7 @@ __all__ = [
     "LLMClient",
     "get_llm_client",
     "VectorStore",
+    "get_vector_store",
     "internal_client",
     "require_tenant",
     "ensure_matching_tenant",

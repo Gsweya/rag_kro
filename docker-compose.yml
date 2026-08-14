@@ -118,6 +118,7 @@ services:
         condition: service_started
     volumes:
       - ./services/api:/app:Z
+      - ./packages/python/rag_kro_shared:/packages/python/rag_kro_shared:Z
     ports:
       - "8000:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -141,6 +142,7 @@ services:
         condition: service_started
     volumes:
       - ./services/ingestion:/app:Z
+      - ./packages/python/rag_kro_shared:/packages/python/rag_kro_shared:Z
     ports:
       - "8001:8001"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
@@ -160,6 +162,7 @@ services:
         condition: service_started
     volumes:
       - ./services/rag:/app:Z
+      - ./packages/python/rag_kro_shared:/packages/python/rag_kro_shared:Z
     ports:
       - "8002:8002"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
@@ -183,6 +186,7 @@ services:
         condition: service_started
     volumes:
       - ./services/worker:/app:Z
+      - ./packages/python/rag_kro_shared:/packages/python/rag_kro_shared:Z
     command: celery -A app.celery_app.app worker -B -l info -Q default
 
   web:
