@@ -47,3 +47,4 @@ ig-sessions/
 *banned*.json
 # pre-downloaded ML wheels for the shared python-base image (large, gitignored)
 infra/docker/python-base/wheels/*.whl
+celerybeat-schedule
