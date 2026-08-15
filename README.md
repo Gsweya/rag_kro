@@ -33,9 +33,10 @@ MinIO, and the HuggingFace Inference API free tier (or a self-hosted Ollama).
 
 ```
 rag_kro/
-├── docker-compose.yml              # one command to run the whole stack
+├── docker-compose.yml              # docker orchestration (profiles dev/wa/ig/ollama)
 ├── .env.example                    # copy → .env, tweak secrets
-├── Makefile                        # make up / make logs / make key …
+├── Makefile                        # make up / make logs / make key / make verify …
+├── run.sh                          # launcher: docker mode OR --local (conda/npm)
 ├── docs/                           # architecture, deployment, security guides
 ├── packages/
 │   └── python/rag_kro_shared/      # shared lib (config, db, crypto, llm, vectors)
@@ -46,9 +47,13 @@ rag_kro/
 │   ├── worker/                     # Celery + beat: sync, summarize, reminders, notify
 │   ├── wa-gateway/                 # WhatsApp connectivity (Node + Baileys)
 │   ├── ig-gateway/                 # Instagram connectivity (Python + instagrapi)
-│   └── web/                        # Next.js dashboard (Geist font)
+│   └── web/                        # Next.js dashboard (Tailwind + Geist font)
 └── infra/
-    └── postgres/init/001_schema.sql # schema (tenant-scoped everywhere)
+    ├── docker/python-base/         # shared ML base: torch+sentence-transformers (once)
+    │   └── fetch-wheels.sh         # resumable pre-download for slow connections
+    └── postgres/
+        ├── init/001_schema.sql     # schema (tenant-scoped everywhere)
+        └── rls/002_rls.sql         # optional Postgres row-level security
 ```
 
 Each service has its **own Dockerfile, its own README, and its own responsibility**.
@@ -78,11 +83,49 @@ Your instance picks up knowledge instantly because retrieval is shared, not dupl
 cp .env.example .env        # set POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, a Fernet key…
 make key                    # generate FERENCE_SECRET_KEY, paste into .env
 
-./run.sh                    # power everything up (builds images, starts stack)
+./run.sh                    # power everything up via Docker (builds images, starts stack)
                             # then opens a terminal tab per service tailing its logs
 # alternatives:
 make up                     # full stack, logs via: make logs / make ps / make down
 ```
+
+### `./run.sh` — two ways to run
+
+| Command | What it does |
+|---|---|
+| `./run.sh` / `./run.sh up` | Docker mode: everything as containers (compose profiles `dev` + `wa`) |
+| `./run.sh build` | build all Docker images |
+| `./run.sh logs` / `ps` / `down` / `restart` | docker-compose equivalents |
+| `./run.sh --local` | **No-Docker mode**: infra stays in Docker, services run natively |
+| `./run.sh --local setup` | create the conda env + install deps (once) |
+| `./run.sh --local ps` / `down` | host processes / stop infra |
+
+> **Slow or flaky connection?** The first Docker build pulls torch (~526 MB) once
+> into the shared `python-base` image. If it keeps timing out, `./run.sh` first runs
+> `fetch-wheels.sh` — a **resumable** (`wget -c`) download into
+> `infra/docker/python-base/wheels/`. Re-run `./run.sh` as many times as needed; it
+> picks up where it left off instead of restarting from zero.
+
+### `--local` mode (conda + npm, no app containers)
+
+Great when you want a lighter runtime or to iterate without Docker for the services.
+Core infra (Postgres, Redis, Qdrant, MinIO) still runs as containers; **only the
+rag_kro services run on the host**:
+
+```bash
+./run.sh --local setup     # once: conda env 'ragkro' (python 3.12) + pip/npm deps
+                           # reuses pre-downloaded torch wheels — no re-download
+./run.sh --local           # start infra, open one terminal tab per service:
+                           #   api / rag / ingestion / worker  → conda (uvicorn/celery)
+                           #   web / wa-gateway                → npm
+./run.sh --local ps        # infra containers + host processes
+./run.sh --local down      # stop infra only
+```
+
+- Conda env name is `ragkro`; override with `RAGKRO_CONDA_ENV=<name>`.
+- Internal URLs (DB, Redis/Celery, Qdrant, MinIO, RAG/Ingestion, web proxy) are
+  automatically rewritten to `localhost` host ports, so docker-internal hostnames
+  resolve without the compose network.
 
 | Service | URL |
 |---|---|
@@ -92,12 +135,14 @@ make up                     # full stack, logs via: make logs / make ps / make d
 | RAG | http://localhost:8002 |
 | Qdrant | http://localhost:6333/dashboard |
 | MinIO console | http://localhost:9001 |
+| Postgres (host port) | localhost:5433 *(5432 is left free for other local Postgres)* |
 
 Then: **Products** → add a few → **Documents** → upload a PDF → **Allowlist** → add a
 phone number → **Connect WhatsApp** → scan the QR → message from an allowed number.
 
 > For dev file-watching the `api`, `ingestion`, `rag`, `worker` and `web` services
-> mount their sources read-write; a restart picks up changes.
+> mount their sources read-write; the shared `rag_kro_shared` package is also
+> bind-mounted, so edits apply without rebuilding images.
 
 ---
 
@@ -143,6 +188,8 @@ or `hf` (HF `all-MiniLM-L6-v2`).
 |---|---|
 | Postgres schema, tenant-scoped | ✅ |
 | Docker Compose skeleton + profiles | ✅ |
+| Launcher: `./run.sh` (docker) + `--local` (conda/npm) modes | ✅ |
+| Shared ML base image (`python-base`, torch once) + resumable wheel fetch | ✅ |
 | Centralized ingestion (PDF/image/product) | ✅ |
 | RAG chain with HF Inference / Ollama | ✅ |
 | Message flow: allowlist → context → reply | ✅ |
