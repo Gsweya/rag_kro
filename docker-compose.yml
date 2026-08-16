@@ -225,6 +225,8 @@ services:
         condition: service_started
     ports:
       - "8100:8100"
+    volumes:
+      - wa-sessions-data:/app/wa-sessions
 
   ig-gateway:
     build:
@@ -261,3 +263,4 @@ volumes:
   qdrant-data:
   minio-data:
   ollama-data:
+  wa-sessions-data:

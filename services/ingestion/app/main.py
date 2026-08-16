@@ -47,7 +47,7 @@ async def ingest_document(
     """Ingest a PDF or image into the shared vector store for a tenant."""
     raw = await file.read()
     title = file.filename
-    object_key = await save_object(tenant_id, title, raw)
+    object_key = save_object(tenant_id, title, raw)
 
     text = ""
     if doc_type == "pdf":
@@ -69,6 +69,7 @@ async def ingest_document(
             "doc_id": object_key,
             "title": title,
             "chunk_index": c["index"],
+            "text": c["text"],
             "source": c["source"],
             "storage_path": object_key,
         }
@@ -104,6 +105,7 @@ def ingest_product(
         product = s.get(Product, product_id)
         if product is None:
             raise HTTPException(404, "product not found")
+        name = product.name
         text = (
             f"Name: {product.name}\n"
             f"Price: {product.price}\n"
@@ -116,7 +118,8 @@ def ingest_product(
         "tenant_id": tenant_id,
         "type": "product",
         "doc_id": str(product_id),
-        "title": product.name,
+        "title": name,
+        "text": text,
         "storage_path": None,
     }]
     store.delete_by_metadata(tenant_id, type="product", doc_id=str(product_id))

@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import pino from 'pino';
+import fs from 'fs';
 
-import { createSocket, statusFor } from './socket.js';
+import { createSocket, statusFor, disconnect as disconnectSocket } from './socket.js';
 import { registerSendRoute } from './send.js';
 
 const app = express();
@@ -41,11 +42,30 @@ app.get('/connect/:tenantId', requireKey, async (req, res) => {
 
 // disconnect (pause-ish control at transport level)
 app.post('/disconnect/:tenantId', requireKey, async (req, res) => {
-  const { socket } = await import('./socket.js');
-  socket.disconnect(req.params.tenantId);
+  disconnectSocket(req.params.tenantId);
   res.json({ disconnected: req.params.tenantId });
 });
 
 registerSendRoute(app, requireKey, logger);
 
-app.listen(PORT, () => logger.info(`wa-gateway listening on :${PORT}`));
+const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+app.listen(PORT, () => {
+  logger.info(`wa-gateway listening on :${PORT}`);
+  const tenantId = process.env.WA_GATEWAY_TENANT_ID || process.env.TENANT_DEFAULT_ID || DEFAULT_TENANT_ID;
+  const credsPath = `./wa-sessions/${tenantId}/creds.json`;
+  let hasSession = false;
+  try {
+    const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+    hasSession = creds.registered === true || (creds.me && creds.me.id);
+  } catch {
+    hasSession = false;
+  }
+  if (hasSession) {
+    createSocket(tenantId, logger)
+      .then((started) => logger.info({ tenantId, started }, 'restored saved session (auto-reconnect)'))
+      .catch((err) => logger.error({ err, tenantId }, 'auto-reconnect failed'));
+  } else {
+    logger.info({ tenantId }, 'no registered session — manual Connect (QR) required once, then auto-reconnects');
+  }
+});

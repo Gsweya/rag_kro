@@ -17,9 +17,12 @@ multiple sockets (tenant → socket map) per spec section 2.
 ## Session durability
 
 Credentials persist via `useMultiFileAuthState` under `wa-sessions/{tenantId}`
-(git-ignored). Spec note: this is the light path — swap to a DB-backed store for
-durability; `wa_sessions` table exists for that purpose. **Keep sessions off the
-public filesystem in production.**
+(git-ignored). On boot the gateway auto-reconnects any tenant whose saved creds
+are `registered: true` (`WA_GATEWAY_TENANT_ID`), so re-linking is only needed
+once per phone. In Docker mode the folder is a named volume (`wa-sessions-data`)
+so it survives container recreation. Spec note: this is the light path — swap to
+a DB-backed store for durability; `wa_sessions` table exists for that purpose.
+**Keep sessions off the public filesystem in production.**
 
 ## Inbound message handling
 

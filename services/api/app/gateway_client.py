@@ -26,9 +26,18 @@ def send_message(platform: str, contact_identifier: str, body: str, tenant_id: s
     if cfg is None:
         raise ValueError(f"unsupported platform: {platform}")
 
-    host = os.getenv(PLATFORM_ENV[platform]["host"], cfg["host"])
-    port = os.getenv(PLATFORM_ENV[platform]["port"], str(cfg["port"]))
-    url = f"http://{host}:{port}/send"
+    # local mode exposes gateways on the host via *_INTERNAL_URL (run.ps1 /
+    # run.sh); full-docker mode falls back to the compose service hostname.
+    internal_url_env = {
+        "whatsapp": "WA_GATEWAY_INTERNAL_URL",
+        "instagram": "IG_GATEWAY_INTERNAL_URL",
+    }
+    base_url = os.getenv(internal_url_env.get(platform, ""))
+    if not base_url:
+        host = os.getenv(PLATFORM_ENV[platform]["host"], cfg["host"])
+        port = os.getenv(PLATFORM_ENV[platform]["port"], str(cfg["port"]))
+        base_url = f"http://{host}:{port}"
+    url = f"{base_url}/send"
 
     resp = httpx.post(
         url,

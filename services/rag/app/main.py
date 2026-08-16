@@ -72,7 +72,8 @@ def chat(
     retrieved = _retrieve(last_user_msg, tenant_id=req.tenant_id)
 
     context_block = "\n\n".join(
-        f"[source: {s.get('title', s.get('doc_id', 'unknown'))}] {s.get('text', s)}"
+        f"[source: {s.get('title', s.get('doc_id', 'unknown'))}]\n"
+        f"{s.get('text') or s.get('source') or ''}"
         for s in retrieved
     )
 

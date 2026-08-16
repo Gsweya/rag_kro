@@ -69,10 +69,9 @@ class LLMClient:
     # ---- OpenAI-compatible (portable to other providers) --------------------
     def _openai_compatible(self, messages: list[dict[str, str]]) -> str:
         s = get_settings()
-        headers = {
-            "Authorization": f"Bearer {s.openai_compatible_api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if s.openai_compatible_api_key:
+            headers["Authorization"] = f"Bearer {s.openai_compatible_api_key}"
         payload = {
             "model": s.openai_compatible_model,
             "messages": messages,

@@ -114,10 +114,11 @@ def build_context(tenant_id: str, conversation_id: str, current_body: str) -> di
                     f"Relationship notes: {profile.notes or '(none yet)'}"
                 )
 
-    for m in reversed(older):
-        role = "user" if m.direction == "inbound" else "assistant"
-        if m.body:
-            history.insert(0, {"role": role, "content": m.body})
+        # collect long-term memory while the session is open (objects detach on close)
+        for m in reversed(older):
+            role = "user" if m.direction == "inbound" else "assistant"
+            if m.body:
+                history.insert(0, {"role": role, "content": m.body})
 
     # persist this turn to short-term memory
     r.rpush(key, json.dumps({"role": "user", "content": current_body}))

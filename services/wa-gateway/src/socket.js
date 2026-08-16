@@ -45,7 +45,7 @@ export function forwardToApi(tenantId, body, mediaUrl = null) {
 export async function createSocket(tenantId, logger) {
   if (sockets.has(tenantId)) return null;
 
-  const entry = { socket: null, status: 'starting', qr: null };
+  const entry = { socket: null, status: 'starting', qr: null, intentional: false };
   sockets.set(tenantId, entry);
 
   const sessionDir = `./wa-sessions/${tenantId}`;
@@ -53,8 +53,10 @@ export async function createSocket(tenantId, logger) {
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
     logger,
+    defaultQueryTimeoutMs: 30000,
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
   });
   entry.socket = sock;
 
@@ -70,11 +72,22 @@ export async function createSocket(tenantId, logger) {
     }
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      entry.status = shouldReconnect ? 'reconnecting' : 'disconnected';
-      sockets.delete(tenantId);
+      const shouldReconnect = !entry.intentional && statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
-        setTimeout(() => createSocket(tenantId, logger), 3000);
+        // keep the entry visible as 'reconnecting' while we retry, so the
+        // dashboard doesn't flap to 'disconnected' during the backoff window
+        entry.status = 'reconnecting';
+        entry.qr = null;
+        entry.socket = null;
+        setTimeout(() => {
+          if (sockets.get(tenantId) === entry) {
+            sockets.delete(tenantId);
+            createSocket(tenantId, logger);
+          }
+        }, 3000);
+      } else {
+        entry.status = 'disconnected';
+        sockets.delete(tenantId);
       }
     } else if (connection === 'open') {
       entry.status = 'connected';
@@ -112,6 +125,8 @@ export async function sendText(tenantId, remoteJid, text) {
 export function disconnect(tenantId) {
   const entry = sockets.get(tenantId);
   if (entry) {
+    entry.intentional = true;
+    entry.status = 'disconnected';
     entry.socket.end(new Error('disconnected by admin'));
     sockets.delete(tenantId);
   }

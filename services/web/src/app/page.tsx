@@ -3,26 +3,47 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
+const TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export default function HomePage() {
   const [sessions, setSessions] = useState<any>({ whatsapp: { status: "…" }, instagram: { status: "…" } });
   const [conversations, setConversations] = useState<any[]>([]);
   const [qr, setQr] = useState<string | null>(null);
 
+  async function waStatus() {
+    const key = process.env.NEXT_PUBLIC_INTERNAL_KEY || "internal-key";
+    return fetch(`/api/wa/status/${TENANT_ID}`, {
+      headers: { "x-internal-key": key },
+    }).then((r) => r.json());
+  }
+
   useEffect(() => {
     api("/sessions").then(setSessions).catch(() => {});
     api("/conversations").then(setConversations).catch(() => {});
+    const refresh = async () => {
+      try {
+        const res = await waStatus();
+        setSessions((s) => ({ ...s, whatsapp: { status: res.status } }));
+        if (res.status === "connected") setQr(null);
+        if (res.qr) {
+          setQr(res.qr);
+          sessionStorage.setItem("rag_kro_qr", res.qr);
+        }
+      } catch {}
+    };
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => clearInterval(timer);
   }, []);
 
   async function connect() {
     const key = process.env.NEXT_PUBLIC_INTERNAL_KEY || "internal-key";
-    await fetch("/api/wa/connect/00000000-0000-0000-0000-000000000001", {
+    await fetch(`/api/wa/connect/${TENANT_ID}`, {
       headers: { "x-internal-key": key },
     });
     // stream the QR by polling the gateway status endpoint
     const timer = setInterval(async () => {
-      const res = await fetch("/api/wa/status/00000000-0000-0000-0000-000000000001", {
-        headers: { "x-internal-key": key },
-      }).then((r) => r.json());
+      const res = await waStatus();
       if (res.qr) {
         setQr(res.qr);
         sessionStorage.setItem("rag_kro_qr", res.qr);
@@ -31,6 +52,16 @@ export default function HomePage() {
         setSessions((s) => ({ ...s, whatsapp: { status: "connected" } }));
       }
     }, 2000);
+  }
+
+  async function disconnectWhatsApp() {
+    const key = process.env.NEXT_PUBLIC_INTERNAL_KEY || "internal-key";
+    await fetch(`/api/wa/disconnect/${TENANT_ID}`, {
+      method: "POST",
+      headers: { "x-internal-key": key },
+    });
+    setSessions((s) => ({ ...s, whatsapp: { status: "disconnected" } }));
+    setQr(null);
   }
 
   return (
@@ -47,12 +78,21 @@ export default function HomePage() {
             <p className="text-lg">{sessions.instagram?.status}</p>
           </div>
         </div>
-        <button
-          onClick={connect}
-          className="mt-4 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium"
-        >
-          Connect WhatsApp
-        </button>
+        {sessions.whatsapp?.status === "connected" ? (
+          <button
+            onClick={disconnectWhatsApp}
+            className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium"
+          >
+            Disconnect WhatsApp
+          </button>
+        ) : (
+          <button
+            onClick={connect}
+            className="mt-4 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium"
+          >
+            Connect WhatsApp
+          </button>
+        )}
         {qr && (
           <div className="mt-4">
             <p className="text-sm text-neutral-400 mb-2">Scan with WhatsApp &gt; Linked Devices</p>

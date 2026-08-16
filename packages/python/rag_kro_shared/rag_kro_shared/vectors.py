@@ -1,4 +1,6 @@
 """Qdrant vector-store client wrapper, tenant-scoped (section 6b metadata filters)."""
+import hashlib
+import uuid
 from typing import Any
 
 from qdrant_client import QdrantClient
@@ -47,10 +49,23 @@ class VectorStore:
         collection = self._collection_for(tenant_id or "default")
         self._ensure_collection(collection)
         pts = [
-            PointStruct(id=pid, vector=vec, payload=meta)
+            PointStruct(id=self._valid_point_id(pid), vector=vec, payload=meta)
             for pid, vec, meta in points
         ]
         self._client.upsert(collection_name=collection, points=pts)
+
+    @staticmethod
+    def _valid_point_id(pid: str | int) -> str | int:
+        """Qdrant only accepts unsigned integers or UUIDs as point IDs."""
+        if isinstance(pid, int):
+            return pid
+        try:
+            return uuid.UUID(pid)
+        except (ValueError, AttributeError, TypeError):
+            pass
+        if str(pid).isdigit():
+            return int(pid)
+        return uuid.UUID(hex=hashlib.md5(str(pid).encode()).hexdigest())
 
     def delete_by_metadata(self, tenant_id: str, **filters: Any) -> None:
         """Filtered delete, e.g. delete_by_metadata(tenant, doc_id=...) (6b stale cleanup)."""

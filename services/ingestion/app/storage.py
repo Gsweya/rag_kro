@@ -1,5 +1,6 @@
 """Object storage (MinIO, S3-compatible). Keeps raw source files for retrieval/regression."""
 import io
+from datetime import timedelta
 
 import httpx
 
@@ -34,7 +35,7 @@ def sign_url(path: str) -> str:
         secret_key=settings.minio_root_password,
         secure=settings.minio_endpoint.startswith("https://"),
     )
-    return client.presigned_get_object(settings.minio_bucket, path, expires=3600)
+    return client.presigned_get_object(settings.minio_bucket, path, expires=timedelta(hours=1))
 
 
 def http_download(url: str) -> bytes:
